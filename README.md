@@ -4,10 +4,18 @@ Turn on your desktop PC from anywhere when Wake-on-LAN doesn't work.
 
 A Tuya Bluetooth fingerbot sits on the PC's power button. A Raspberry Pi next to it drives the fingerbot over Bluetooth LE. You reach the Pi over [Tailscale](https://tailscale.com) through a small web page or HTTP API. No router ports are opened, and the Tuya cloud is only used once, during setup.
 
-```
- Phone / laptop ──(Tailscale)──▶ Raspberry Pi ──(Bluetooth LE)──▶ Fingerbot ──▶ PC power button
-   web page / curl + token        FastAPI on its 100.x address      Tuya BLE, encrypted
-                                  pings the PC over Tailscale ◀───────────────────── PC
+<p align="center">
+  <img src="docs/fingerbot-on-pc.jpg" alt="A white Tuya fingerbot stuck on top of a black PC case, its arm positioned over the top-panel power button" width="420">
+  <br>
+  <em>The fingerbot on the author's PC. The arm sits directly over the top-panel power button and needs a 100% push depth to reach it.</em>
+</p>
+
+```mermaid
+flowchart LR
+    C["Phone / laptop<br/>web page or curl + token"] -- "HTTP over Tailscale" --> P["Raspberry Pi<br/>FastAPI on its 100.x address"]
+    P -- "Bluetooth LE<br/>(Tuya, encrypted)" --> F["Fingerbot"]
+    F -- "presses 3 s" --> B["PC power button"]
+    P -. "ping over Tailscale:<br/>is the PC on?" .-> PC["PC"]
 ```
 
 > [!WARNING]
