@@ -1,0 +1,15 @@
+[Unit]
+Description=Remote PC power button via Tuya fingerbot
+After=network-online.target bluetooth.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/fingerbot-pc-power/pc-power.env
+WorkingDirectory=%h/fingerbot-pc-power
+ExecStart=%h/fingerbot-pc-power/serve.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

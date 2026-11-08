@@ -1,0 +1,9 @@
+*.env
+!*.env.example
+CURL.txt
+press.log
+*.bak
+*.bak-*
+.venv/
+__pycache__/
+.pytest_cache/

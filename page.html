@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PC Power">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111214">
+<title>PC Power</title>
+<style>
+  :root {
+    --bg: #111214; --card: #1b1d21; --line: #2a2d33; --text: #e9eaec; --muted: #9a9ea6;
+    --on: #3ecf8e; --off: #6b7079; --warn: #f2b84b; --bad: #f2685b; --accent: #4c8dff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+    display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 15px; font-weight: 600; color: var(--muted); margin: 4px 2px 0; letter-spacing: .02em; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+  .state { display: flex; align-items: center; gap: 14px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--off); flex: none; }
+  .dot.on { background: var(--on); box-shadow: 0 0 0 5px rgba(62, 207, 142, .15); }
+  .dot.wait { background: var(--warn); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .big { font-size: 22px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .job { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 15px; }
+  .job:empty { display: none; }
+  .job .ok { color: var(--on); } .job .bad { color: var(--bad); } .job .warn { color: var(--warn); }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--warn); width: 0; transition: width .5s; }
+  button {
+    width: 100%; border: 0; border-radius: 14px; padding: 17px; font: inherit; font-size: 17px;
+    font-weight: 650; cursor: pointer; color: #fff; background: var(--accent);
+  }
+  button.secondary { background: transparent; border: 1px solid var(--line); color: var(--text); font-weight: 550; }
+  button.danger { background: transparent; border: 1px solid #5a2f2b; color: var(--bad); font-weight: 550; }
+  button:disabled { opacity: .45; cursor: default; }
+  .hint { color: var(--muted); font-size: 13px; margin: 0 4px; }
+  .msg { font-size: 14px; margin: 0 4px; min-height: 1.4em; }
+  .msg.bad { color: var(--bad); }
+  input {
+    width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: inherit; margin: 10px 0 12px;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PC POWER</h1>
+
+  <section id="login" class="card" hidden>
+    <div class="big">Enter access token</div>
+    <div class="sub">It's the <code>API_TOKEN</code> line in <code>pc-power.env</code> on the Pi. Stored only in this browser.</div>
+    <input id="tokenInput" type="password" autocomplete="off" placeholder="Token">
+    <button id="saveToken">Save</button>
+  </section>
+
+  <section id="app" hidden>
+    <div class="card">
+      <div class="state">
+        <span id="dot" class="dot"></span>
+        <div>
+          <div id="stateText" class="big">Checking…</div>
+          <div id="stateSub" class="sub">&nbsp;</div>
+        </div>
+      </div>
+      <div id="job" class="job"></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+      <button id="wake">Wake PC</button>
+      <button id="refresh" class="secondary">Refresh</button>
+      <button id="restart" class="danger">Force restart…</button>
+    </div>
+    <p id="msg" class="msg"></p>
+    <p class="hint">“Off” means the PC doesn't answer ping over Tailscale. It can also mean the PC is on but something (for example a VPN) is blocking Tailscale. Wake can then switch the PC off. Use Force restart only if you accept losing unsaved work.</p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const KEY = "pcpower_token";
+  const $ = (id) => document.getElementById(id);
+  let busy = false;
+  let last = null;
+  let timer = null;
+
+  // Accept a token from the link (#token=...), keep it, and strip it from the address bar.
+  const m = location.hash.match(/token=([^&]+)/);
+  if (m) {
+    localStorage.setItem(KEY, decodeURIComponent(m[1]));
+    history.replaceState(null, "", location.pathname);
+  }
+  const token = () => localStorage.getItem(KEY) || "";
+
+  function showLogin() { $("login").hidden = false; $("app").hidden = true; }
+  function showApp() { $("login").hidden = true; $("app").hidden = false; }
+
+  $("saveToken").onclick = () => {
+    const v = $("tokenInput").value.trim();
+    if (!v) return;
+    localStorage.setItem(KEY, v);
+    $("tokenInput").value = "";
+    showApp();
+    refresh();
+  };
+
+  async function api(method, path, body, timeoutMs = 120000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(path, {
+        method,
+        headers: Object.assign(
+          { Authorization: "Bearer " + token() },
+          body ? { "Content-Type": "application/json" } : {}
+        ),
+        body: body ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal,
+        cache: "no-store",
+      });
+      if (res.status === 401) {
+        localStorage.removeItem(KEY);
+        showLogin();
+        throw new Error("Token rejected. Enter it again.");
+      }
+      let data = {};
+      try { data = await res.json(); } catch (_) {}
+      return { status: res.status, data };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  const clock = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+
+  function renderJob(job) {
+    const el = $("job");
+    if (!job) { el.innerHTML = ""; return; }
+    const what = job.kind === "restart" ? "Restart" : "Wake press";
+    if (job.phase === "waiting") {
+      const pct = Math.min(100, Math.round(100 * (job.waited_s || 0) / (job.watch_seconds || 180)));
+      el.innerHTML = `<span class="warn">${what} sent at ${clock(job.pressed_at)}. Waiting for the PC… ${job.waited_s || 0} s</span>
+        <div class="bar"><i style="width:${pct}%"></i></div>`;
+    } else if (job.phase === "up") {
+      el.innerHTML = `<span class="ok">${what} at ${clock(job.pressed_at)}: PC came up after ${job.up_after_s} s.</span>`;
+    } else if (job.phase === "no_response") {
+      el.innerHTML = `<span class="bad">${what} at ${clock(job.pressed_at)}: no response after ${job.watch_seconds} s.</span>
+        <div class="sub">Try Wake again. If the PC might be on behind the VPN, use Force restart.</div>`;
+    } else if (job.phase === "failed") {
+      el.innerHTML = `<span class="bad">${what} failed at ${clock(job.finished_at)}: ${escapeHtml(job.error || "unknown error")}</span>
+        <div class="sub">If the fingerbot wasn't found, close Smart Life on your phone and try again.</div>`;
+    } else {
+      el.innerHTML = "";
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function render(s) {
+    last = s;
+    const waiting = s.job && s.job.phase === "waiting";
+    $("dot").className = "dot" + (s.pc_up ? " on" : waiting ? " wait" : "");
+    $("stateText").textContent = s.pc_up ? "PC is on" : waiting ? "Starting…" : "PC is off";
+    $("stateSub").textContent = s.pc_up ? `Reachable at ${s.host}` : `No reply from ${s.host}`;
+    renderJob(s.job);
+    $("wake").disabled = busy || s.pc_up || waiting || s.cooldown_s > 0;
+    $("wake").textContent = s.cooldown_s > 0 && !s.pc_up ? `Wake PC (wait ${s.cooldown_s} s)` : "Wake PC";
+    $("restart").disabled = busy;
+  }
+
+  async function refresh() {
+    if (!token()) { showLogin(); return; }
+    try {
+      const { status, data } = await api("GET", "/status", null, 20000);
+      if (status === 200) render(data);
+      else setMsg(data.error || `Status check failed (HTTP ${status}).`, true);
+    } catch (e) {
+      if (token()) setMsg("Can't reach the Pi. Is Tailscale on for this device?", true);
+      else setMsg(e.message, true);
+    }
+    schedule();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    const fast = busy || (last && last.job && last.job.phase === "waiting");
+    timer = setTimeout(refresh, fast ? 3000 : 15000);
+  }
+
+  function setMsg(text, bad = false) { $("msg").textContent = text || ""; $("msg").className = "msg" + (bad ? " bad" : ""); }
+
+  function setBusy(on, label) {
+    busy = on;
+    $("wake").disabled = on;
+    $("restart").disabled = on;
+    $("dot").className = "dot" + (on ? " wait" : "");
+    if (on) { $("stateText").textContent = label; $("stateSub").textContent = "Talking to the fingerbot over Bluetooth"; }
+  }
+
+  $("wake").onclick = async () => {
+    setMsg("");
+    setBusy(true, "Pressing…");
+    try {
+      const { status, data } = await api("POST", "/press");
+      if (status === 200) setMsg("Pressed. Watching for the PC to come up.");
+      else setMsg(data.reason || data.error || `Press failed (HTTP ${status}).`, true);
+    } catch (e) {
+      setMsg(e.name === "AbortError" ? "No answer from the Pi in 2 minutes." : e.message, true);
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  $("restart").onclick = async () => {
+    const ok = confirm(
+      "Force restart?\n\nThe fingerbot holds the power button for 10 s, which cuts power to the PC. " +
+      "Unsaved work is lost. Then it presses again to boot.\n\nTakes about 45 seconds."
+    );
+    if (!ok) return;
+    setMsg("");
+    setBusy(true, "Restarting… (~45 s)");
+    try {
+      const { status, data } = await api("POST", "/restart", { confirm: true }, 180000);
+      if (status === 200) setMsg("Restart done. Watching for the PC to come up.");
+      else setMsg(data.reason || data.error || `Restart failed (HTTP ${status}).`, true);
+    } catch (e) {
+      setMsg(e.name === "AbortError" ? "No answer from the Pi in 3 minutes." : e.message, true);
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  $("refresh").onclick = () => { setMsg(""); refresh(); };
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+  if (token()) { showApp(); refresh(); } else { showLogin(); }
+})();
+</script>
+</body>
+</html>
