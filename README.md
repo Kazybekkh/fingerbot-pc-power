@@ -1,6 +1,6 @@
 # fingerbot-pc-power
 
-Turn on your desktop PC from anywhere when Wake-on-LAN doesn't work.
+Turn on your desktop PC from anywhere when Wake-on-LAN doesn't work (e.g. student accommodation Wi-Fi with client-device isolation).
 
 A Tuya Bluetooth fingerbot sits on the PC's power button. A Raspberry Pi next to it drives the fingerbot over Bluetooth LE. You reach the Pi over [Tailscale](https://tailscale.com) through a small web page or HTTP API. No router ports are opened, and the Tuya cloud is only used once, during setup.
 
