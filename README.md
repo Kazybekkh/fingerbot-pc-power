@@ -12,10 +12,10 @@ A Tuya Bluetooth fingerbot sits on the PC's power button. A Raspberry Pi next to
 
 ```mermaid
 flowchart LR
-    C["Phone / laptop<br/>web page or curl + token"] -- "HTTP over Tailscale" --> P["Raspberry Pi<br/>FastAPI on its 100.x address"]
-    P -- "Bluetooth LE<br/>(Tuya, encrypted)" --> F["Fingerbot"]
-    F -- "presses 3 s" --> B["PC power button"]
-    P -. "ping over Tailscale:<br/>is the PC on?" .-> PC["PC"]
+    C["Phone / laptop<br/>web page or curl + token"] -->|"HTTP over Tailscale"| P["Raspberry Pi<br/>FastAPI on its 100.x address"]
+    P -->|"Bluetooth LE<br/>(Tuya, encrypted)"| F["Fingerbot"]
+    F -->|"presses 3 s"| B["PC power button"]
+    P -.->|"ping over Tailscale:<br/>is the PC on?"| PC["PC"]
 ```
 
 > [!WARNING]
